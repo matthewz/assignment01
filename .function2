@@ -1,0 +1,157 @@
+load_array()
+{
+   declare -Ag ROOMSIZE
+   declare -Ag ROOMTIME 
+   
+   typeset -i ROOMIDX=1
+   
+   mkfifo mypipe1
+   mkfifo mypipe2
+   mkfifo mypipe3
+   #
+   (
+   cat ./rooms.txt \
+   | cut -d "," -f 1-2 \
+   | while read row  
+   do
+      ROOMNBR=$(echo $row | cut -d "," -f 1)
+      ROOMCAP=$(echo $row | cut -d "," -f 2)
+      echo "${ROOMIDX} ${ROOMNBR}|${ROOMCAP}"
+      ROOMIDX=$ROOMIDX+1
+   done
+   ) > mypipe1 &
+   
+   typeset -i ROOMIDX2=1
+   
+   (
+   cat ./rooms.txt \
+   | cut -d "," -f 1,3- \
+   | while read row
+   do
+      #
+      ROOMNBR=$(echo $row | cut -d "," -f 1)
+      ROOMTIMES=$(echo $row | cut -d "," -f 2-)
+      PIVOT=1
+      SOMETIME="${ROOMIDX2} $ROOMNBR|"
+      (
+         echo ${ROOMTIMES} \
+         | tr "," \\n 
+      ) > mypipe3 &
+      #
+      while read row
+      do
+         if [ "$PIVOT" -eq "1" ] 
+         then
+            SOMETIME="${SOMETIME}${row}"
+            PIVOT=2
+         else
+            SOMETIME="${SOMETIME}-${row}"
+            PIVOT=1
+            echo "${SOMETIME}"
+            ROOMIDX2=$ROOMIDX2+1
+            SOMETIME="${ROOMIDX2} $ROOMNBR|"
+         fi
+      done < mypipe3
+      #
+   done
+   ) > mypipe2 &
+   
+   while read index data
+   do
+      ROOMSIZE[$index]="$data"
+   done < mypipe1
+
+   #echo "ROOMSIZE is: ${ROOMSIZE[*]}"
+   
+   while read index data
+   do
+      ROOMTIME[$index]="$data"
+   done < mypipe2
+   
+   #echo "ROOMTIME is: ${ROOMTIME[*]}"
+   
+   rm mypipe1
+   rm mypipe2
+   rm mypipe3
+}
+
+abs()
+{
+
+   echo $1 | tr -d "-"
+
+}
+
+search_roomtime()
+{
+   typeset -i TEAMBGN=$(echo $1 | tr -d ":")
+   typeset -i TEAMEND=$(echo $2 | tr -d ":")
+   typeset -i IDX=1
+   typeset -i CNT=0
+   typeset -i BGN
+   typeset -i END
+   mkfifo mypipe4
+   (
+   while true
+   do
+      #echo "${ROOMTIME[$IDX]}"
+      NBR=$(echo "${ROOMTIME[$IDX]}" | cut -d "|" -f 1)
+      BGN=$(echo "${ROOMTIME[$IDX]}" | cut -d "|" -f 2 | cut -d "-" -f 1 | tr -d ":")
+      END=$(echo "${ROOMTIME[$IDX]}" | cut -d "|" -f 2 | cut -d "-" -f 2 | tr -d ":")
+      if [[ \
+            $TEAMBGN -ge $BGN  \
+      &&    $TEAMEND -le $END  \
+         ]]
+      then
+         if [ $CNT -gt 0 ]
+         then
+            echo -n "|${NBR}" 
+         else
+            echo -n "${NBR}" 
+         fi
+         CNT=$CNT+1
+      fi
+      IDX=$IDX+1
+      if [ $IDX -gt ${#ROOMTIME[@]} ]
+      then
+         return 0
+      fi
+   done
+   ) > mypipe4 & 
+   RESULT=$(cat mypipe4)
+   rm mypipe4
+   echo "${RESULT}"
+} 
+
+search_roomsize()
+{
+   typeset -i TEAMSIZE=$1
+   typeset -i TEAMFLOOR=$2
+   typeset -i FLOOR
+   typeset -i CAPACITY
+   typeset -i IDX=1
+
+   (
+   while true
+   do 
+      #echo "${ROOMSIZE[$IDX]}"
+      FLOOR=$(echo "${ROOMSIZE[$IDX]}" | cut -d "." -f 1)
+      ROOMID=$(echo "${ROOMSIZE[$IDX]}" | cut -d "|" -f 1)
+      CAPACITY=$(echo "${ROOMSIZE[$IDX]}" | cut -d "|" -f 2)
+      DISTANCE=$(abs $(expr $TEAMFLOOR - $FLOOR))
+      #echo $FLOOR
+      #echo $ROOMID
+      #echo $CAPACITY
+      if [ ${TEAMSIZE} -le ${CAPACITY} ]
+      then
+         echo "${DISTANCE}|${FLOOR}|${ROOMID}|${CAPACITY}"
+      fi
+      IDX=$IDX+1
+      if [ $IDX -gt ${#ROOMSIZE[@]} ]
+      then
+         return 0
+      fi
+   done
+   ) \
+   | sort -n 
+}
