@@ -11,6 +11,8 @@ How you solved the problem:
 2) Exploit the utilities available in UNIX such as: tr, grep, cut
 3) Just treat it as a series of simple data processing algorithm, keep it simple 
 
+* The code was developed and tested on Mac OS 10.15.3 using "GNU bash, version 5.0.16(1)-release"
+
 How would it behave based on the different parameters:
 
 1) Uses absolute value to find nearest floor's conference room
